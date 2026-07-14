@@ -154,15 +154,40 @@ export default function IntelligenceDashboard({
         })
       });
 
-      const data = await response.json();
-      if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok) {
+        let errorMsg = `Erro do servidor (Status ${response.status})`;
+        if (contentType.includes('application/json')) {
+          try {
+            const data = await response.json();
+            errorMsg = data.error || errorMsg;
+          } catch {
+            // ignore
+          }
+        } else {
+          try {
+            const text = await response.text();
+            if (text && text.length < 300) {
+              errorMsg = text;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        setGeneratedMessage(`Erro: ${errorMsg}`);
+        return;
+      }
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
         setGeneratedMessage(data.text || '');
       } else {
-        setGeneratedMessage(`Erro: ${data.error || 'Erro ao conectar ao assistente Merlin IA.'}`);
+        const text = await response.text();
+        setGeneratedMessage(text || 'Erro: Resposta vazia recebida do servidor.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setGeneratedMessage('Erro de conexão ao servidor. Verifique se o backend está sendo executado corretamente.');
+      setGeneratedMessage(`Erro de conexão: ${err.message || 'Verifique se o backend está ativo ou tente novamente.'}`);
     } finally {
       setIsGeneratingMessage(false);
     }
@@ -204,15 +229,40 @@ export default function IntelligenceDashboard({
         })
       });
 
-      const data = await response.json();
-      if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok) {
+        let errorMsg = `Erro do servidor (Status ${response.status})`;
+        if (contentType.includes('application/json')) {
+          try {
+            const data = await response.json();
+            errorMsg = data.error || errorMsg;
+          } catch {
+            // ignore
+          }
+        } else {
+          try {
+            const text = await response.text();
+            if (text && text.length < 300) {
+              errorMsg = text;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        setAiRecommendations(`Incapaz de auditar a base neste momento: ${errorMsg}`);
+        return;
+      }
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
         setAiRecommendations(data.text || '');
       } else {
-        setAiRecommendations(`Incapaz de auditar a base neste momento: ${data.error || 'Erro na API'}`);
+        const text = await response.text();
+        setAiRecommendations(text || 'Erro: Resposta vazia recebida do servidor.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setAiRecommendations('Não foi possível se conectar ao servidor Merlin Intelligence.');
+      setAiRecommendations(`Erro de conexão: ${err.message || 'Não foi possível se conectar ao servidor Merlin Intelligence.'}`);
     } finally {
       setIsAnalyzingLeads(false);
     }

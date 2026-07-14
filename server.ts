@@ -32,6 +32,50 @@ function getGoogleGenAI(): GoogleGenAI {
   return aiInstance;
 }
 
+// Helper: Try multiple models sequentially with a 20-second timeout each to ensure maximum resilience
+async function generateWithFallbackAndTimeout(
+  ai: GoogleGenAI,
+  userPrompt: string,
+  systemPrompt: string,
+  temperature: number
+): Promise<string> {
+  const models = ["gemini-3.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"];
+  let lastError: any = null;
+
+  for (const model of models) {
+    try {
+      console.log(`[Merlin Server] Tentando gerar conteúdo usando modelo: ${model}`);
+      
+      const responsePromise = ai.models.generateContent({
+        model: model,
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: temperature,
+        },
+      });
+
+      // 20-second timeout promise
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Timeout de 20 segundos atingido para o modelo ${model}.`)), 20000);
+      });
+
+      const response = await Promise.race([responsePromise, timeoutPromise]);
+
+      if (response && response.text) {
+        console.log(`[Merlin Server] Conteúdo gerado com sucesso pelo modelo: ${model}`);
+        return response.text;
+      }
+      throw new Error(`O modelo ${model} retornou uma resposta sem texto.`);
+    } catch (error: any) {
+      console.error(`[Merlin Server] Falha ao gerar com modelo ${model}:`, error.message || error);
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Falha ao gerar conteúdo com todos os modelos disponíveis.");
+}
+
 // API Route: Generate personalized copy/script for a lead
 app.post("/api/gemini/generate-message", async (req, res) => {
   try {
@@ -61,16 +105,8 @@ Instruções Adicionais:
 - Tenha um gancho de chamada para ação claro (Call to Action), convidando para uma resposta simples ou um agendamento rápido de conversa.
 - Retorne APENAS a mensagem pronta, sem introduções ou explicações.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.7,
-      },
-    });
-
-    res.json({ text: response.text });
+    const text = await generateWithFallbackAndTimeout(ai, userPrompt, systemPrompt, 0.7);
+    res.json({ text });
   } catch (error: any) {
     console.error("Erro ao gerar mensagem via Gemini:", error);
     res.status(500).json({ error: error.message || "Erro interno do servidor ao gerar mensagem com IA." });
@@ -99,16 +135,8 @@ ${JSON.stringify(clientsSummary.stageCounts, null, 2)}
 Com base nestes dados, gere exatamente 3 recomendações táticas bem estruturadas e práticas em português.
 Seja direto, motivador e focado em resultados rápidos. Retorne a resposta em formato Markdown limpo, estruturado com títulos claros para cada recomendação.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.75,
-      },
-    });
-
-    res.json({ text: response.text });
+    const text = await generateWithFallbackAndTimeout(ai, userPrompt, systemPrompt, 0.75);
+    res.json({ text });
   } catch (error: any) {
     console.error("Erro ao analisar base de leads via Gemini:", error);
     res.status(500).json({ error: error.message || "Erro interno do servidor ao analisar leads com IA." });
